@@ -11,7 +11,7 @@ type ProviderModels = {
     | "gpt-5.6-luna"
     ,
     anthropic:
-    | "fable-5.1" //TODO: not official, i dont have time to sign up to platform
+    | "claude-haiku-4-5" //TODO: not official, i dont have time to sign up to platform
 
 }
 
@@ -26,13 +26,18 @@ type Model<P extends Provider> = ProviderModels[P];
 
 // Anthropic
 
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropicClient = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
 
 // OpenAI
 
 import OpenAI from "openai";
 
-const client = new OpenAI({
+const openAIClient = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
@@ -43,17 +48,36 @@ const client = new OpenAI({
 export async function requestMessage(provider: Provider, model: Model<Provider>, input: ChatMessage[]): Promise<ChatMessage> {
 
     if (provider === 'openai') {
-        const response = await client.responses.create({
+        const response = await openAIClient.responses.create({
             model,
             input
         });
 
-        const newResponse: ChatMessage = {
+        const assistantResponse: ChatMessage = {
             role: "assistant",
             content: response.output_text
         }
 
-        return newResponse
+        return assistantResponse
+    }
+
+    if (provider === 'anthropic') {
+        const response = await anthropicClient.messages.create({
+            model,
+            max_tokens: 1000, // custom
+            messages: input
+        })
+
+        for (const block of response.content) {
+            if (block.type === "text") {
+                const assistantResponse: ChatMessage = {
+                    role: "assistant",
+                    content: block.text
+                }
+
+                return assistantResponse
+            }
+        }
     }
 
     return {
@@ -67,6 +91,9 @@ export async function requestMessage(provider: Provider, model: Model<Provider>,
 console.log("Debugging...");
 
 async function debug() {
+
+    const customProvider: Provider = "anthropic" 
+    const customModel: Model<Provider> = "claude-haiku-4-5"
 
     const rl = readline.createInterface({ input, output });
 
@@ -83,7 +110,7 @@ async function debug() {
 
         graahh.push(newInputIncome);
 
-        await requestMessage("openai", "gpt-5.6-sol", 
+        await requestMessage(customProvider, customModel,
             graahh
         ).then((response) => {
             console.log(response);
