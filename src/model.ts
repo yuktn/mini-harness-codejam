@@ -4,6 +4,9 @@ import "dotenv/config";
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
+import { openAiTools, anthropicTools } from "./tools/tools.js";
+import { webSearch, webVisit } from "./tools/webtools.js"
+
 type ProviderModels = {
     openai:
     | "gpt-5.6-sol"
@@ -11,12 +14,13 @@ type ProviderModels = {
     | "gpt-5.6-luna"
     ,
     anthropic:
-    | "claude-haiku-4-5" //TODO: not official, i dont have time to sign up to platform
+    | "claude-haiku-4-5"
+    | "claude-opus-5"
 
 }
 
 type ChatMessage = {
-    role: "user" | "assistant" | "system";
+    role: "user" | "assistant" | "system" | "developer";
     content: string;
 }
 
@@ -36,6 +40,7 @@ const anthropicClient = new Anthropic({
 // OpenAI
 
 import OpenAI from "openai";
+import type { ResponseInputItem } from "openai/resources/responses/responses";
 
 const openAIClient = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -47,38 +52,96 @@ const openAIClient = new OpenAI({
 
 export async function requestMessage(provider: Provider, model: Model<Provider>, input: ChatMessage[]): Promise<ChatMessage> {
 
-    if (provider === 'openai') {
-        const response = await openAIClient.responses.create({
+    if (provider === "openai") {
+        let response = await openAIClient.responses.create({
             model,
-            input
+            input,
+            tools: openAiTools,
         });
 
-        const assistantResponse: ChatMessage = {
-            role: "assistant",
-            content: response.output_text
-        }
+        while (true) {
+            const calls = response.output.filter(
+                (item): item is OpenAI.Responses.ResponseFunctionToolCall =>
+                    item.type === "function_call"
+            );
 
-        return assistantResponse
-    }
-
-    if (provider === 'anthropic') {
-        const response = await anthropicClient.messages.create({
-            model,
-            max_tokens: 1000, // custom
-            messages: input
-        })
-
-        for (const block of response.content) {
-            if (block.type === "text") {
-                const assistantResponse: ChatMessage = {
+            if (calls.length === 0) {
+                return {
                     role: "assistant",
-                    content: block.text
+                    content: response.output_text,
+                };
+            }
+
+            const toolOutputs: ResponseInputItem[] = [];
+
+            for (const call of calls) {
+                const args = JSON.parse(call.arguments);
+
+                let result: unknown;
+
+                switch (call.name) {
+                    case "web_search":
+                        result = await webSearch(args.query);
+                        break;
+
+                    case "web_visit":
+                        result = await webVisit(args.siteUrl);
+                        break;
+
+                    default:
+                        throw new Error(`Unknown tool: ${call.name}`);
                 }
 
-                return assistantResponse
+                toolOutputs.push({
+                    type: "function_call_output",
+                    call_id: call.call_id,
+                    output:
+                        typeof result === "string"
+                            ? result
+                            : JSON.stringify(result),
+                });
             }
+
+            response = await openAIClient.responses.create({
+                model,
+                previous_response_id: response.id,
+                input: toolOutputs,
+                tools: openAiTools,
+            });
+
+
         }
     }
+
+    // TODO: Should make a function that converts my ChatMessage (OpenAI's) with Anthropic's (Doesn't support 'developer') alright, amodei.
+    // oh and should implement tool call logic for Anthropic, but i guess it'll be similar with OpenAI's.
+    // like check if it the tool call request is there, if not, just return the value.
+    // and change status and wow. just like that i made my own harness.
+    // I should give it bash and file read as well but yeah.
+    // and use Ink to make it a CLI like real harnesses. REAL harnesses.
+    // im having too much fun writing this todo.
+    // 26/09/13, ill be back.
+
+
+    // if (provider === 'anthropic') {
+    //     const response = await anthropicClient.messages.create({
+    //         model,
+    //         max_tokens: 1000, // custom
+    //         messages: input,
+    //         tools: anthropicTools
+    //     })
+
+    //     for (const block of response.content) {
+    //         if (block.type === "text") {
+    //             const assistantResponse: ChatMessage = {
+    //                 role: "assistant",
+    //                 content: block.text
+    //             }
+
+    //             return assistantResponse
+    //         }
+    //     }
+    // }
 
     return {
         role: "assistant",
@@ -92,8 +155,8 @@ console.log("Debugging...");
 
 async function debug() {
 
-    const customProvider: Provider = "anthropic" 
-    const customModel: Model<Provider> = "claude-haiku-4-5"
+    const customProvider: Provider = "openai"
+    const customModel: Model<Provider> = "gpt-5.6-terra"
 
     const rl = readline.createInterface({ input, output });
 
@@ -102,6 +165,8 @@ async function debug() {
     while (true) {
 
         const inputString: string = await rl.question('input your string? ');
+
+        if (inputString === "quit") break;
 
         const newInputIncome: ChatMessage = {
             role: "user",
