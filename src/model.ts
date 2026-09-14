@@ -31,6 +31,11 @@ type Model<P extends Provider> = ProviderModels[P];
 // Anthropic
 
 import Anthropic from "@anthropic-ai/sdk";
+import type {
+    MessageParam,
+    ContentBlockParam,
+    ToolResultBlockParam,
+} from "@anthropic-ai/sdk/resources/messages";
 
 const anthropicClient = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
@@ -49,6 +54,8 @@ const openAIClient = new OpenAI({
 
 
 //Start real model handling
+
+//THIS IS ONE AGENT LOOP. REAL MESSAGE HANDLING WORKS IN AGENT.ts
 
 export async function requestMessage(provider: Provider, model: Model<Provider>, input: ChatMessage[]): Promise<ChatMessage> {
 
@@ -113,33 +120,81 @@ export async function requestMessage(provider: Provider, model: Model<Provider>,
         }
     }
 
-    // TODO: Should make a function that converts my ChatMessage (OpenAI's) with Anthropic's (Doesn't support 'developer') alright, amodei.
-    // oh and should implement tool call logic for Anthropic, but i guess it'll be similar with OpenAI's.
-    // like check if it the tool call request is there, if not, just return the value.
-    // and change status and wow. just like that i made my own harness.
-    // I should give it bash and file read as well but yeah.
-    // and use Ink to make it a CLI like real harnesses. REAL harnesses.
-    // im having too much fun writing this todo.
-    // 26/09/13, ill be back.
-
+    //OK SO I REALIZED I SHOULD MAKE A WHOLE AGENT LOOP WORK AND ADD OTHER ADAPTERS SO I'LL DO THAT WAY
 
     // if (provider === 'anthropic') {
-    //     const response = await anthropicClient.messages.create({
+
+    //   //anthropic's messageParam doesn't support developer role -> change to system
+    //  input.forEach(message => {
+    //       if (message.role === "developer") {
+    //             message.role = "system";
+    //         }
+    //   });
+    //     let response = await anthropicClient.messages.create({
     //         model,
     //         max_tokens: 1000, // custom
-    //         messages: input,
+    //         messages: input as MessageParam[],
     //         tools: anthropicTools
     //     })
 
-    //     for (const block of response.content) {
-    //         if (block.type === "text") {
-    //             const assistantResponse: ChatMessage = {
-    //                 role: "assistant",
-    //                 content: block.text
+    //     while (true) {
+    //         const calls = response.content.filter(
+    //             (block): block is Anthropic.ToolUseBlock =>
+    //                 block.type === "tool_use"
+    //         );
+
+    //         if (calls.length === 0) {
+    //             for (const block of response.content) {
+    //                 if (block.type === "text") {
+    //                     const assistantResponse: ChatMessage = {
+    //                         role: "assistant",
+    //                         content: block.text
+    //                     }
+
+    //                     return assistantResponse
+    //                 }
+    //             }
+    //         }
+
+    //         for (const call of calls) {
+    //             let result: unknown;
+
+    //             switch (call.name) {
+    //                 case "web_search": {
+    //                     const input = call.input as { query?: string };
+    //                     if (typeof input.query !== "string") {
+    //                         throw new Error("Missing siteUrl for web_visit");
+    //                     }
+    //                     result = await webSearch(input.query);
+    //                     break;
+    //                 }
+
+    //                 case "web_visit": {
+    //                     const input = call.input as { siteUrl?: string };
+    //                     if (typeof input.siteUrl !== "string") {
+    //                         throw new Error("Missing siteUrl for web_visit");
+    //                     }
+    //                     result = await webVisit(input.siteUrl);
+    //                     break;
+    //                 }
+
+    //                 default:
+    //                     throw new Error(`Unknown tool: ${call.name}`);
     //             }
 
-    //             return assistantResponse
+    //             input.push(
+    //                 { role: "assistant", content: response.content },
+    //                 {
+    //                     role: "user",
+    //                     content: [{ type: "tool_result", tool_use_id: call.id, content: result as string }]
+    //                 });
     //         }
+
+    //         response = await anthropicClient.messages.create({
+    //             model,
+    //             messages: toolOutputs,
+    //             tools: anthropicTools,
+    //         });
     //     }
     // }
 
