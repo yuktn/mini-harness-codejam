@@ -73,6 +73,7 @@ export async function requestMessage(provider: Provider, model: Model<Provider>,
             );
 
             if (calls.length === 0) {
+                console.log(response.output_text)
                 return {
                     role: "assistant",
                     content: response.output_text,
@@ -88,10 +89,12 @@ export async function requestMessage(provider: Provider, model: Model<Provider>,
 
                 switch (call.name) {
                     case "web_search":
+                        console.log("Agent requested web search for: "+args.query)
                         result = await webSearch(args.query);
                         break;
 
                     case "web_visit":
+                        console.log("Agent requested web visit for: "+args.siteUrl)
                         result = await webVisit(args.siteUrl);
                         break;
 
@@ -115,8 +118,6 @@ export async function requestMessage(provider: Provider, model: Model<Provider>,
                 input: toolOutputs,
                 tools: openAiTools,
             });
-
-
         }
     }
 
@@ -206,8 +207,6 @@ export async function requestMessage(provider: Provider, model: Model<Provider>,
 
 //lets debug
 
-console.log("Debugging...");
-
 async function debug() {
 
     const customProvider: Provider = "openai"
@@ -240,5 +239,3 @@ async function debug() {
         });
     }
 }
-
-debug();

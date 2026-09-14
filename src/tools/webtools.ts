@@ -19,11 +19,10 @@ export async function webSearch(query: string) {
         }
 
         const data = await response.json();
-        console.log(data);
 
         return data;
     } catch (error) {
-        console.error('Request failed:', error);
+        console.error(error);
     }
 
     return 'Error while Web Search Tool'
@@ -54,7 +53,6 @@ export async function webVisit(siteUrl: string) {
     try {
         const response = await fetch(url, options);
         const data = await response.json();
-        console.log(data);
         return data;
     } catch (error) {
         console.error(error);
