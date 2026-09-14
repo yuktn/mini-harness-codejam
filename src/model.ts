@@ -7,6 +7,12 @@ import { stdin as input, stdout as output } from 'node:process';
 import { openAiTools, anthropicTools } from "./tools/tools.js";
 import { webSearch, webVisit } from "./tools/webtools.js"
 
+export type AgentEvent =
+    | { type: "thinking_start" }
+    | { type: "tool_start"; tool: string, args?: string }
+    | { type: "tool_end"; tool: string }
+    | { type: "thinking_end" };
+
 type ProviderModels = {
     openai:
     | "gpt-5.6-sol"
@@ -57,9 +63,18 @@ const openAIClient = new OpenAI({
 
 //THIS IS ONE AGENT LOOP. REAL MESSAGE HANDLING WORKS IN AGENT.ts
 
-export async function requestMessage(provider: Provider, model: Model<Provider>, input: ChatMessage[]): Promise<ChatMessage> {
+export async function requestMessage(
+    provider: Provider,
+    model: Model<Provider>,
+    input: ChatMessage[],
+    onEvent?: (event: AgentEvent) => void
+): Promise<ChatMessage> {
 
     if (provider === "openai") {
+        onEvent?.({
+            type: "thinking_start"
+        });
+
         let response = await openAIClient.responses.create({
             model,
             input,
@@ -74,6 +89,9 @@ export async function requestMessage(provider: Provider, model: Model<Provider>,
 
             if (calls.length === 0) {
                 console.log(response.output_text)
+                onEvent?.({
+                    type: "thinking_end"
+                });
                 return {
                     role: "assistant",
                     content: response.output_text,
@@ -89,13 +107,34 @@ export async function requestMessage(provider: Provider, model: Model<Provider>,
 
                 switch (call.name) {
                     case "web_search":
-                        console.log("Agent requested web search for: "+args.query)
+                        onEvent?.({
+                            type: "tool_start",
+                            tool: "web_search",
+                            args: args.query
+                        });
+
+                        console.log("Agent requested web search for: " + args.query)
                         result = await webSearch(args.query);
+
+                        onEvent?.({
+                            type: "tool_end",
+                            tool: "web_search"
+                        })
                         break;
 
                     case "web_visit":
-                        console.log("Agent requested web visit for: "+args.siteUrl)
+                        onEvent?.({
+                            type: "tool_start",
+                            tool: "web_visit",
+                            args: args.siteUrl
+                        });
+                        console.log("Agent requested web visit for: " + args.siteUrl)
                         result = await webVisit(args.siteUrl);
+
+                        onEvent?.({
+                            type: "tool_end",
+                            tool: "web_visit"
+                        })
                         break;
 
                     default:
