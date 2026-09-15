@@ -13,7 +13,14 @@ export type AgentEvent =
     | { type: "tool_end"; tool: string }
     | { type: "thinking_end" };
 
-type ProviderModels = {
+export type streamAgentEvent =
+    | { type: "text_delta"; text: string }
+    | { type: "tool_start"; tool: string, args?: string }
+    | { type: "tool_end"; tool: string }
+    | { type: "finish" }
+    | { type: "error"; error: Error };
+
+export type ProviderModels = {
     openai:
     | "gpt-5.6-sol"
     | "gpt-5.6-terra"
@@ -30,9 +37,9 @@ export type ChatMessage = {
     content: string;
 }
 
-type Provider = keyof ProviderModels;
+export type Provider = keyof ProviderModels;
 
-type Model<P extends Provider> = ProviderModels[P];
+export type Model<P extends Provider> = ProviderModels[P];
 
 // Anthropic
 
@@ -52,6 +59,7 @@ const anthropicClient = new Anthropic({
 
 import OpenAI from "openai";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
+import { parseUnknownDef } from "openai/_vendor/zod-to-json-schema/index.mjs";
 
 const openAIClient = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -244,6 +252,144 @@ export async function requestMessage(
     }
 }
 
+export async function* generatorRequestMessage(
+    provider: Provider,
+    model: Model<Provider>,
+    input: ChatMessage[],
+    onEvent?: (event: AgentEvent) => void
+): AsyncGenerator<
+    streamAgentEvent,
+    ChatMessage,
+    void
+> {
+
+    if (provider === "openai") {
+        onEvent?.({
+            type: "thinking_start"
+        });
+
+        let thisInput: ResponseInputItem[] = input
+
+        let previousResponseId: string | undefined;
+
+        let thisResponse: OpenAI.Responses.Response | undefined;
+
+        let fullOutputText: string= '';
+
+        while (true) {
+            let stream;
+
+            if (previousResponseId) {
+                stream = await openAIClient.responses.create({
+                    model,
+                    input: thisInput,
+                    tools: openAiTools,
+                    stream: true,
+                    previous_response_id: previousResponseId
+                });
+            } else {
+                stream = await openAIClient.responses.create({
+                    model,
+                    input,
+                    tools: openAiTools,
+                    stream: true
+                });
+            }
+
+
+            for await (const event of stream) {
+                if (event.type === "response.output_text.delta") {
+                    fullOutputText += event.delta
+                    yield { type: "text_delta", text: event.delta };
+                }
+
+                if (event.type === "response.completed") {
+                    thisResponse = event.response
+                    previousResponseId = thisResponse.id
+                    break;
+                }
+            }
+
+
+            if (thisResponse) {
+
+                const toolCalls = thisResponse.output.filter(
+                    item => item.type === "function_call"
+                );
+
+
+                if (toolCalls.length === 0) {
+                    yield {
+                        type: "finish"
+                    };
+                    return {
+                        role: "assistant",
+                        content: fullOutputText,
+                    };
+                } else {
+
+                    const toolOutputs: ResponseInputItem[] = [];
+
+                    for (const call of toolCalls) {
+                        const args = JSON.parse(call.arguments);
+
+                        let result: unknown;
+
+                        switch (call.name) {
+                            case "web_search":
+                                yield {
+                                    type: "tool_start",
+                                    tool: "web_search",
+                                    args: args.query
+                                };
+
+                                console.log("Agent requested web search for: " + args.query)
+                                result = await webSearch(args.query);
+
+                                yield {
+                                    type: "tool_end",
+                                    tool: "web_search"
+                                }
+                                break;
+
+                            case "web_visit":
+                                yield {
+                                    type: "tool_start",
+                                    tool: "web_visit",
+                                    args: args.siteUrl
+                                };
+                                console.log("Agent requested web visit for: " + args.siteUrl)
+                                result = await webVisit(args.siteUrl);
+
+                                yield {
+                                    type: "tool_end",
+                                    tool: "web_visit"
+                                }
+                                break;
+
+                            default:
+                                throw new Error(`Unknown tool: ${call.name}`);
+                        }
+
+                        toolOutputs.push({
+                            type: "function_call_output",
+                            call_id: call.call_id,
+                            output:
+                                typeof result === "string"
+                                    ? result
+                                    : JSON.stringify(result),
+                        });
+
+                        thisInput = toolOutputs
+                    }
+                }
+            }
+        }
+    }
+
+    return { role: "assistant", content: "Error, no such provider" }
+}
+
 //lets debug
 
 async function debug() {
@@ -259,7 +405,7 @@ async function debug() {
 
         const inputString: string = await rl.question('input your string? ');
 
-        if (inputString === "quit") break;
+        if (inputString === "quit") rl.close();
 
         const newInputIncome: ChatMessage = {
             role: "user",

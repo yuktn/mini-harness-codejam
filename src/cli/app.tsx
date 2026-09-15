@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { Text, Box } from "ink";
 import TextInput from "ink-text-input";
-import { requestMessage } from "../model.js";
-import type { ChatMessage, AgentEvent } from "../model.js";
+import { requestMessage, generatorRequestMessage } from "../model.js";
+import type { ChatMessage, AgentEvent, streamAgentEvent } from "../model.js";
 
 export default function App() {
     const [query, setQuery] = useState('');
+    const [generator, setGenerator] = useState(true)
+    const [messageStream, setMessageStream] = useState('')
     const [messageList, setMessageList] = useState<ChatMessage[]>([])
     const [status, setStatus] = useState<string | null>(null);
 
@@ -18,23 +20,39 @@ export default function App() {
 
         setQuery('')
 
-        const finalMessage = await requestMessage('openai', 'gpt-5.6-luna', messages as ChatMessage[],
-            event => {
-                if (event.type === "thinking_start") {
-                    setStatus("Thinking...")
-                } else if (event.type === "tool_start") {
-                    if (event.tool === "web_search") {
-                        setStatus("Searching the web for " + event.args)
-                    } else if (event.tool === "web_visit") {
-                        setStatus("Visiting " + event.args + " to get more info")
+        if (generator === false) {
+            const finalMessage = await requestMessage('openai', 'gpt-5.6-luna', messages as ChatMessage[],
+                event => {
+                    if (event.type === "thinking_start") {
+                        setStatus("Thinking...")
+                    } else if (event.type === "tool_start") {
+                        if (event.tool === "web_search") {
+                            setStatus("Searching the web for " + event.args)
+                        } else if (event.tool === "web_visit") {
+                            setStatus("Visiting " + event.args + " to get more info")
+                        }
+                    } else if (event.type === "thinking_end") {
+                        setStatus(null)
                     }
-                } else if (event.type === "thinking_end") {
-                    setStatus(null)
+                    setMessageList(messageList => [...messageList, finalMessage])
                 }
-            }
-        )
-
-        setMessageList(messageList => [...messageList, finalMessage])
+            )
+        } else {
+            //TODO: finish implement stream cli support
+            setStatus("Thinking...")
+            const finalMessage = await generatorRequestMessage('openai', 'gpt-5.6-luna', messages as ChatMessage[],
+                event => { if (event.type === "tool_start") {
+                        if (event.tool === "web_search") {
+                            setStatus("Searching the web for " + event.args)
+                        } else if (event.tool === "web_visit") {
+                            setStatus("Visiting " + event.args + " to get more info")
+                        }
+                    } else if (event.type === "finish") {
+                        setStatus(null)
+                    }
+                }
+            )
+        }
     }
 
     return (
