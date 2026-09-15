@@ -256,8 +256,7 @@ export async function requestMessage(
 export async function* generatorRequestMessage(
     provider: Provider,
     model: Model<Provider>,
-    input: ChatMessage[],
-    onEvent?: (event: streamAgentEvent) => void
+    input: ChatMessage[]
 ): AsyncGenerator<
     streamAgentEvent,
     ChatMessage,

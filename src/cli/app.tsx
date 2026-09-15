@@ -10,6 +10,7 @@ export default function App() {
     const [messageStream, setMessageStream] = useState('')
     const [messageList, setMessageList] = useState<ChatMessage[]>([])
     const [status, setStatus] = useState<string | null>(null);
+    const [streaming, setStreaming] = useState(false)
 
     async function submitHandler() {
         if (query === '') return;
@@ -38,23 +39,60 @@ export default function App() {
                 }
             )
         } else {
-            //TODO: finish implement stream cli
             setStatus("Thinking...")
-            const finalMessage = await generatorRequestMessage('openai', 'gpt-5.6-luna', messages as ChatMessage[],
-                event => {
-                    if (event.type === "start") {
-                        setStatus("Thinking...")
-                    } else if (event.type === "tool_start") {
-                        if (event.tool === "web_search") {
-                            setStatus("Searching the web for " + event.args)
-                        } else if (event.tool === "web_visit") {
-                            setStatus("Visiting " + event.args + " to get more info")
-                        }
-                    } else if (event.type === "finish") {
-                        setStatus(null)
-                    }
+
+            const generator = generatorRequestMessage(
+                "openai",
+                "gpt-5.6-luna",
+                messages as ChatMessage[]
+            );
+
+            while (true) {
+                const { value, done } = await generator.next();
+
+                if (done) {
+                    setMessageList(prev => [
+                        ...prev,
+                        value
+                    ]);
+
+                    break;
                 }
-            )
+
+                switch (value.type) {
+                    case "start":
+                        setStatus("Thinking...");
+                        setStreaming(true)
+                        break;
+
+                    case "text_delta":
+                        setMessageStream(prev =>
+                            prev + value.text
+                        );
+                        break;
+
+                    case "tool_start":
+                        if (value.tool === "web_search") {
+                            setStatus(
+                                `Searching the web for ${value.args}`
+                            );
+                        }
+
+                        if (value.tool === "web_visit") {
+                            setStatus(
+                                `Visiting ${value.args} to get more info`
+                            );
+                        }
+
+                        break;
+
+                    case "finish":
+                        setStatus(null);
+                        setMessageStream('')
+                        setStreaming(false)
+                        break;
+                }
+            }
         }
     }
 
@@ -65,13 +103,15 @@ export default function App() {
                     <Box key={index} marginY={1}>
                         <Text color="cyan">{message.role}</Text>
                         <Text color="gray"> - </Text>
-                        <Text color="blackBright">
-                            {message.content}
-                        </Text>
+                        <Text color="blackBright">{message.content}</Text>
                     </Box>
                 ))}
+                {(streaming) && <Text color="blackBright">
+                    <Text color="cyan">assistant</Text>
+                    <Text color="gray"> - </Text>
+                    <Text color="blackBright">{messageStream}</Text>
+                </Text>}
             </Box>
-
 
             {status && (
                 <Box>
