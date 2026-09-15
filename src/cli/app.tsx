@@ -38,10 +38,13 @@ export default function App() {
                 }
             )
         } else {
-            //TODO: finish implement stream cli support
+            //TODO: finish implement stream cli
             setStatus("Thinking...")
             const finalMessage = await generatorRequestMessage('openai', 'gpt-5.6-luna', messages as ChatMessage[],
-                event => { if (event.type === "tool_start") {
+                event => {
+                    if (event.type === "start") {
+                        setStatus("Thinking...")
+                    } else if (event.type === "tool_start") {
                         if (event.tool === "web_search") {
                             setStatus("Searching the web for " + event.args)
                         } else if (event.tool === "web_visit") {

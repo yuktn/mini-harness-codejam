@@ -15,6 +15,7 @@ export type AgentEvent =
 
 export type streamAgentEvent =
     | { type: "text_delta"; text: string }
+    | { type: "start" }
     | { type: "tool_start"; tool: string, args?: string }
     | { type: "tool_end"; tool: string }
     | { type: "finish" }
@@ -256,7 +257,7 @@ export async function* generatorRequestMessage(
     provider: Provider,
     model: Model<Provider>,
     input: ChatMessage[],
-    onEvent?: (event: AgentEvent) => void
+    onEvent?: (event: streamAgentEvent) => void
 ): AsyncGenerator<
     streamAgentEvent,
     ChatMessage,
@@ -264,9 +265,9 @@ export async function* generatorRequestMessage(
 > {
 
     if (provider === "openai") {
-        onEvent?.({
-            type: "thinking_start"
-        });
+        yield {
+            type: "start"
+        };
 
         let thisInput: ResponseInputItem[] = input
 
